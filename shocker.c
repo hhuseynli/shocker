@@ -3,103 +3,214 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <termios.h>
+#include <errno.h>
 
 #define PROMPTER_PATH "./prompter"
 #define MAX_PROMPT_LEN 1024
 #define MAX_ARGS 64
+#define HISTORY_SIZE 100
 
 extern char **environ;
+
+static char history[HISTORY_SIZE][MAX_PROMPT_LEN];
+static int history_count = 0;
+
+static const char *COMMAND_NAMES[] = {
+    "help", "exit", "quit",
+    "install", "remove", "create", "destroy"
+};
+
+/* FIXED: replaced variable-length array usage */
+#define MAX_COMMANDS 10
+
+static void add_history(const char *line) {
+    if (!line || !line[0]) return;
+
+    if (history_count > 0 &&
+        strcmp(history[(history_count - 1) % HISTORY_SIZE], line) == 0)
+        return;
+
+    strncpy(history[history_count % HISTORY_SIZE], line, MAX_PROMPT_LEN - 1);
+    history[history_count % HISTORY_SIZE][MAX_PROMPT_LEN - 1] = '\0';
+    history_count++;
+}
+
+static int get_history_count(void) {
+    return history_count < HISTORY_SIZE ? history_count : HISTORY_SIZE;
+}
+
+static const char *get_history_entry(int index) {
+    int count = get_history_count();
+    int start = history_count - count;
+    return history[(start + index) % HISTORY_SIZE];
+}
+
+static void refresh_prompt_line(const char *buffer) {
+    printf("\rShocker> %s", buffer);
+    printf("\033[K");
+    fflush(stdout);
+}
+
+static int enable_raw_mode(struct termios *orig) {
+    struct termios raw;
+    if (tcgetattr(STDIN_FILENO, orig) == -1) return -1;
+
+    raw = *orig;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+
+    return tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+}
+
+static void disable_raw_mode(const struct termios *orig) {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, orig);
+}
+
+static void handle_tab(char *buffer, size_t *len) {
+    int matches[MAX_COMMANDS];
+    int count = 0;
+
+    int prefix_len = 0;
+    while (buffer[prefix_len] && buffer[prefix_len] != ' ')
+        prefix_len++;
+
+    for (int i = 0; i < 7; i++) {
+        if (strncmp(COMMAND_NAMES[i], buffer, prefix_len) == 0)
+            matches[count++] = i;
+    }
+
+    if (count == 1) {
+        const char *match = COMMAND_NAMES[matches[0]];
+        strcpy(buffer, match);
+        buffer[strlen(match)] = ' ';
+        buffer[strlen(match) + 1] = '\0';
+        *len = strlen(buffer);
+        refresh_prompt_line(buffer);
+    }
+}
+
+static int read_input(char *buffer, size_t size) {
+    struct termios orig;
+    size_t len = 0;
+    int hist_count = get_history_count();
+    int cursor = hist_count;
+    char backup[MAX_PROMPT_LEN] = "";
+
+    if (enable_raw_mode(&orig) == -1) {
+        fgets(buffer, size, stdin);
+        buffer[strcspn(buffer, "\n")] = '\0';
+        return 0;
+    }
+
+    while (1) {
+        char c;
+        read(STDIN_FILENO, &c, 1);
+
+        if (c == '\n') {
+            buffer[len] = '\0';
+            printf("\n");
+            break;
+        }
+
+        if (c == 127) {
+            if (len > 0) {
+                len--;
+                buffer[len] = '\0';
+                refresh_prompt_line(buffer);
+            }
+            continue;
+        }
+
+        if (c == '\t') {
+            handle_tab(buffer, &len);
+            continue;
+        }
+
+        if (c == 27) {
+            char seq[2];
+            read(STDIN_FILENO, &seq[0], 1);
+            read(STDIN_FILENO, &seq[1], 1);
+
+            if (seq[1] == 'A' && cursor > 0) {
+                if (cursor == hist_count)
+                    strcpy(backup, buffer);
+                cursor--;
+                strcpy(buffer, get_history_entry(cursor));
+                len = strlen(buffer);
+                refresh_prompt_line(buffer);
+            }
+
+            if (seq[1] == 'B' && cursor < hist_count) {
+                cursor++;
+                if (cursor == hist_count)
+                    strcpy(buffer, backup);
+                else
+                    strcpy(buffer, get_history_entry(cursor));
+                len = strlen(buffer);
+                refresh_prompt_line(buffer);
+            }
+            continue;
+        }
+
+        if (len < size - 1) {
+            buffer[len++] = c;
+            buffer[len] = '\0';
+            putchar(c);
+        }
+    }
+
+    disable_raw_mode(&orig);
+    return 0;
+}
 
 int run_prompt(char *const argv[]) {
     int status;
     pid_t pid = fork();
-    
-    if (pid < 0) {
-        perror("fork failed");
-        return -1;
-    } else if (pid == 0) {
+
+    if (pid == 0) {
         execve(PROMPTER_PATH, argv, environ);
-        perror("execve failed");
+        perror("execve");
         exit(1);
     } else {
-        if (waitpid(pid, &status, 0) == -1) {
-            perror("waitpid failed");
-            return -1;
-        }
+        waitpid(pid, &status, 0);
     }
-    
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    return -1;
+
+    return WEXITSTATUS(status);
 }
 
-static void print_help(void) {
-    printf("Built-ins:\n");
-    printf("  help         Show this help message\n");
-    printf("  exit, quit   Exit shocker\n");
-    printf("\n");
-    printf("All other commands are forwarded to prompter.\n");
-}
-
-int prompt(void) {
+int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
 
     printf("Shocker activated!\n");
 
     while (1) {
-        int i;
-        char *token;
-
         printf("Shocker> ");
-        if (fgets(buffer, MAX_PROMPT_LEN, stdin) == NULL) {
-            printf("\n");
-            break;
-        }
+        fflush(stdout);
 
-        buffer[strcspn(buffer, "\n")] = '\0';
-        if (buffer[0] == '\0') {
-            continue;
-        }
+        if (read_input(buffer, sizeof(buffer)) == -1) break;
+        if (!buffer[0]) continue;
 
-        i = 0;
-        token = strtok(buffer, " \t");
-        while (token != NULL && i < MAX_ARGS - 1) {
+        add_history(buffer);
+
+        int i = 0;
+        char *token = strtok(buffer, " ");
+        while (token && i < MAX_ARGS - 1) {
             args[i++] = token;
-            token = strtok(NULL, " \t");
+            token = strtok(NULL, " ");
         }
         args[i] = NULL;
 
-        if (i == 0) {
-            continue;
-        }
-
-        if (strcmp(args[0], "exit") == 0 || strcmp(args[0], "quit") == 0) {
+        if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit"))
             break;
-        }
 
-        if (strcmp(args[0], "help") == 0) {
-            print_help();
+        if (!strcmp(args[0], "help")) {
+            printf("Commands: help, exit, install, remove, create, destroy\n");
             continue;
         }
 
-        {
-            int status = run_prompt(args);
-            if (status != 0) {
-                printf("Error code: %d\n", status);
-            }
-        }
-    }
-
-    return 0;
-}
-
-int main(int argc, char *argv[]) {
-    if (argc == 1) {
-        return prompt();
-    } else {
-        int status = run_prompt(argv + 1);
-        return status == -1 ? 1 : status;
+        run_prompt(args);
     }
 }
