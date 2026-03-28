@@ -1,5 +1,11 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+
+#define BASE_DIR ".shocker"
 
 static int cmd_help(int argc, char *argv[]);
 static int cmd_install(int argc, char *argv[]);
@@ -20,14 +26,24 @@ static const struct command COMMANDS[] = {
     {"destroy", cmd_destroy}
 };
 
+static void ensure_base_dir(void) {
+    struct stat st;
+
+    if (stat(BASE_DIR, &st) == -1) {
+        if (mkdir(BASE_DIR, 0700) == -1) {
+            perror("mkdir .shocker");
+        }
+    }
+}
+
 static int cmd_help(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
     printf("Shocker commands:\n");
     printf("  help                Show this help\n");
-    printf("  install <pkg...>    Install dependency packages\n");
-    printf("  remove <pkg...>     Remove dependency packages\n");
+    printf("  install <pkg...>    Install dependency packages (simulation)\n");
+    printf("  remove <pkg...>     Remove dependency packages (simulation)\n");
     printf("  create <name>       Create a temporary dev environment\n");
     printf("  destroy <name>      Destroy a temporary dev environment\n");
     return 0;
@@ -44,6 +60,7 @@ static int cmd_install(int argc, char *argv[]) {
         printf(" %s", argv[i]);
     }
     printf("\n");
+    printf("[install] simulation only - no real package installation performed\n");
     return 0;
 }
 
@@ -58,26 +75,51 @@ static int cmd_remove(int argc, char *argv[]) {
         printf(" %s", argv[i]);
     }
     printf("\n");
+    printf("[remove] simulation only - no real package removal performed\n");
     return 0;
 }
 
 static int cmd_create(int argc, char *argv[]) {
+    char path[512];
+
     if (argc != 2) {
         fprintf(stderr, "create: expected exactly one environment name\n");
         return 2;
     }
 
-    printf("[create] environment: %s\n", argv[1]);
+    ensure_base_dir();
+    snprintf(path, sizeof(path), "%s/%s", BASE_DIR, argv[1]);
+
+    if (mkdir(path, 0700) == -1) {
+        if (errno == EEXIST) {
+            fprintf(stderr, "create: environment '%s' already exists\n", argv[1]);
+        } else {
+            perror("create");
+        }
+        return 1;
+    }
+
+    printf("[create] environment created: %s\n", argv[1]);
+    printf("[create] path: %s\n", path);
     return 0;
 }
 
 static int cmd_destroy(int argc, char *argv[]) {
+    char path[512];
+
     if (argc != 2) {
         fprintf(stderr, "destroy: expected exactly one environment name\n");
         return 2;
     }
 
-    printf("[destroy] environment: %s\n", argv[1]);
+    snprintf(path, sizeof(path), "%s/%s", BASE_DIR, argv[1]);
+
+    if (rmdir(path) == -1) {
+        perror("destroy");
+        return 1;
+    }
+
+    printf("[destroy] environment removed: %s\n", argv[1]);
     return 0;
 }
 
