@@ -11,6 +11,10 @@
 #define MAX_ARGS 64
 #define HISTORY_SIZE 100
 
+#define KEY_BACKSPACE 127
+#define KEY_ESCAPE 27
+
+// environment variable for prompter to use as base directory for environments
 extern char **environ;
 
 static char history[HISTORY_SIZE][MAX_PROMPT_LEN];
@@ -27,6 +31,7 @@ static const char *COMMAND_NAMES[] = {
 static void add_history(const char *line) {
     if (!line || !line[0]) return;
 
+	// check for consecutive duplicates
     if (history_count > 0 &&
         strcmp(history[(history_count - 1) % HISTORY_SIZE], line) == 0)
         return;
@@ -37,10 +42,12 @@ static void add_history(const char *line) {
 }
 
 static int get_history_count(void) {
+	// ternary operator to return the correct count without exceeding HISTORY_SIZE
     return history_count < HISTORY_SIZE ? history_count : HISTORY_SIZE;
 }
 
 static const char *get_history_entry(int index) {
+	// gets history entry starting from the last HISTORY_SIZE (100) entries.
     int count = get_history_count();
     int start = history_count - count;
     return history[(start + index) % HISTORY_SIZE];
@@ -91,11 +98,18 @@ static void handle_tab(char *buffer, size_t *len) {
     }
 }
 
+/// @brief Reads user input with support for line editing, history navigation, and tab completion.
+/// @param buffer The current command line being typed/edited.
+/// @param size The total capacity of buffer. 
+/// @return 
 static int read_input(char *buffer, size_t size) {
     struct termios orig;
+	/// The current number of characters in the buffer.
     size_t len = 0;
     int hist_count = get_history_count();
-    int cursor = hist_count;
+	/// The history entry (from the 'history' ring buffer) which is currently selected.
+    int cursor = hist_count; 
+	/// Stores the current buffer content when navigating history, so it can be restored if the user goes back to the "current" line.
     char backup[MAX_PROMPT_LEN] = "";
 
     if (enable_raw_mode(&orig) == -1) {
@@ -103,7 +117,7 @@ static int read_input(char *buffer, size_t size) {
         buffer[strcspn(buffer, "\n")] = '\0';
         return 0;
     }
-
+	// read the buffer one character at a time.
     while (1) {
         char c;
         read(STDIN_FILENO, &c, 1);
@@ -114,7 +128,8 @@ static int read_input(char *buffer, size_t size) {
             break;
         }
 
-        if (c == 127) {
+		// 127 is the ASCII code for backspace.
+        if (c == KEY_BACKSPACE) {
             if (len > 0) {
                 len--;
                 buffer[len] = '\0';
@@ -128,11 +143,12 @@ static int read_input(char *buffer, size_t size) {
             continue;
         }
 
-        if (c == 27) {
+        if (c == KEY_ESCAPE) {
             char seq[2];
             read(STDIN_FILENO, &seq[0], 1);
             read(STDIN_FILENO, &seq[1], 1);
 
+			// ESC + A is the ANSI escape sequence for the up arrow key
             if (seq[1] == 'A' && cursor > 0) {
                 if (cursor == hist_count)
                     strcpy(backup, buffer);
@@ -142,6 +158,7 @@ static int read_input(char *buffer, size_t size) {
                 refresh_prompt_line(buffer);
             }
 
+			// ESC + B is the ANSI escape sequence for the down arrow key.
             if (seq[1] == 'B' && cursor < hist_count) {
                 cursor++;
                 if (cursor == hist_count)
@@ -158,6 +175,7 @@ static int read_input(char *buffer, size_t size) {
             buffer[len++] = c;
             buffer[len] = '\0';
             putchar(c);
+			fflush(stdout);
         }
     }
 
@@ -191,7 +209,7 @@ int main() {
         fflush(stdout);
 
         if (read_input(buffer, sizeof(buffer)) == -1) break;
-        if (!buffer[0]) continue;
+        if (!buffer[0]) continue; // skip empty buffer/input
 
         add_history(buffer);
 
