@@ -220,6 +220,19 @@ void test() {
     }
     free(e.packages);
 
+    EnvRecord loaded;
+    deserialize_env("/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/test-env.shockerfile", &loaded);
+
+    printf("Loaded env:\n");
+    printf("Name : %s\n", loaded.name);
+    printf("Root Path : %s\n", loaded.root_path);
+    printf("Package Manager : %d\n", loaded.pkg_mgr);
+    printf("Packages count : %d\n", loaded.pkg_count);
+    printf("Packages:\n");
+    for (int i = 0; i < loaded.pkg_count; i++) {
+        printf("  - %s\n", loaded.packages[i]);
+    }
+
     printf("END TESTING\n");
 }
 
@@ -242,9 +255,9 @@ int main() {
         char *token = strtok(buffer, " ");
         while (token && i < MAX_ARGS - 1) {
             args[i++] = token;
-            token = strtok(nullptr, " ");
+            token = strtok(NULL, " ");
         }
-        args[i] = nullptr;
+        args[i] = NULL;
 
         if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit"))
             break;
