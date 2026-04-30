@@ -5,8 +5,8 @@ CFLAGS = -Wall -Wextra -pedantic
 
 all: shocker prompter
 
-shocker: shocker.c
-	$(CC) $(CFLAGS) -o $@ $<
+shocker: shocker.c shockerfile.c
+	$(CC) $(CFLAGS) -o $@ $^
 
 prompter: prompter.c
 	$(CC) $(CFLAGS) -o $@ $<

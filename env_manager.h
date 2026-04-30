@@ -19,7 +19,7 @@ typedef enum {
 /// Used to represent a single shocker environment
 typedef struct {
     char name[64];
-    /// Absolute path to environment's root directory
+    /// Absolute path to environment's root directory (must end with / )
     char root_path[256];
     /// PID of environment's initial process
     pid_t pid;
@@ -33,6 +33,7 @@ typedef struct {
     /// UNIX timestamp of environment creation
     time_t created_at;
     EnvStatus status;
+
 } EnvRecord;
 
 #endif //SHOCKER_ENV_MANAGER_H

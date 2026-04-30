@@ -5,6 +5,10 @@
 #include <sys/wait.h>
 #include <termios.h>
 
+#include "env_manager.h"
+#include "shockerfile.h"
+
+
 #define PROMPTER_PATH "./prompter"
 #define MAX_PROMPT_LEN 1024
 #define MAX_ARGS 64
@@ -197,6 +201,28 @@ int run_prompt(char *const argv[]) {
     return WEXITSTATUS(status);
 }
 
+void test() {
+    printf("TESTING... \n");
+    EnvRecord e = {.name = "test-env",
+        .root_path = "/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/",
+        .pkg_mgr = APT, .pkg_count = 3};
+
+    e.packages = malloc(3 * sizeof(char*));
+
+    e.packages[0] = strdup("git");
+    e.packages[1] = strdup("curl");
+    e.packages[2] = strdup("vim");
+
+    serialize_env(&e);
+
+    for (int i = 0; i < 3; i++) {
+        free(e.packages[i]);
+    }
+    free(e.packages);
+
+    printf("END TESTING\n");
+}
+
 int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
@@ -222,6 +248,11 @@ int main() {
 
         if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit"))
             break;
+
+        //TODO: FOR TESTING ONLY--WILL BE REMOVED BEFORE FINAL BUILD
+        if (strcmp(args[0], "test") == 0) {
+            test();
+        }
 
         if (!strcmp(args[0], "help")) {
             printf("Commands: help, exit, install, remove, create, destroy\n");
