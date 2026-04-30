@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc <= cmd_index) {
-        return cmd_help(0, NULL);
+        return cmd_help(0, nullptr);
     }
 
     return dispatch_command(argv[cmd_index], argc - cmd_index, argv + cmd_index);

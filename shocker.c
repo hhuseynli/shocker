@@ -4,7 +4,6 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <termios.h>
-#include <errno.h>
 
 #define PROMPTER_PATH "./prompter"
 #define MAX_PROMPT_LEN 1024
@@ -217,9 +216,9 @@ int main() {
         char *token = strtok(buffer, " ");
         while (token && i < MAX_ARGS - 1) {
             args[i++] = token;
-            token = strtok(NULL, " ");
+            token = strtok(nullptr, " ");
         }
-        args[i] = NULL;
+        args[i] = nullptr;
 
         if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit"))
             break;
