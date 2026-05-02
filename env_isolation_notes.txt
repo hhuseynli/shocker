@@ -1,0 +1,70 @@
+How to give the program the permissions for isolating each environment from each-other and the host;
+as well as how to actually implement that isolation:
+
+
+The parent process (the program itself) will stay in the host namespace. For each environment,
+a child process with a separate user namespace will be created. Each child process will
+be completely isolated from each other and the parent process. Mount propagation will be disabled so that
+the host and child process cannot see each other's mounts.
+
+For each environment, the parent will have to map the UIDs and GIDs of the host namespace to the child namespace.
+Inside each environment, the user will have root privileges, so, using shell passthrough, they can achieve
+whatever they want inside the environment.
+
+When unsharing, the following flags will be used: CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID.
+CLONE_NEWUSER will create a new user namespace for the child process.
+CLONE_NEW will create a new and separate mount namespace for the child process.
+CLONE_NEWPID will create a new PID namespace for the child process, so that it will have its own process tree.
+The child process will see itself as PID 0.
+
+Crucially, the network namespace will not be unshared, so that the child process can access the network
+for downloading packages and updates. This also means that the child process can potentially access the network
+interfaces of the host, which is a security risk. To mitigate this,
+we can consider using network namespaces in the future, but for now,
+we will keep it simple and allow the child process to use the host network.
+
+As a future enhancement, we can consider allowing the user to specify which namespaces they
+want to unshare.
+
+
+
+Upon creation, instead of each environment being an empty folder, it will have the very essential initial
+files and directories for a Linux system, such as /bin, /lib, /etc, etc. This will allow the user to chroot
+into the environment and have a functional shell.
+
+The way this will be done is via using OverlayFS, which is a feature of the Linux kernel that provides a
+Copy-on-Write (CoW) mechanism. The parent process will have a base image of a Linux system,
+and for each environment, it will create an OverlayFS mount that combines the base image with a writable layer
+for that environment. This way, each environment can have its own changes without affecting the base image or
+other environments.
+(If we were to copy the base image for each environment, it would take up a lot of disk space and time.
+With OverlayFS, we can save both.)
+
+Here's a code snippet of the most important system calls that will be used for the isolation:
+(All of this must happen after fork()).
+
+#define _GNU_SOURCE
+#include <sched.h>
+#include <sys/mount.h>
+
+// 1. UNHARE: Cut the child process off from the parent namespace.
+// (this will happen in the parent process)
+unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID);
+
+// 2. SYNC: Parent maps UID/GID via pipe here (omitted for brevity)
+// (this will happen in the parent process)
+// (the needed directories are /proc/[child_pid]/uid_map and /proc/[child_pid]/gid_map)
+
+// 3. OVERLAY: Stack the filesystem
+// (this will happen in the child process)
+mount("overlay", "env/merged", "overlay", 0,
+"lowerdir=base,upperdir=env/diff,workdir=env/work");
+
+// 4. PIVOT: Change the world view
+// (this will happen in the child process)
+chroot("env/merged");
+chdir("/");
+
+// 5. EXEC: Run the package manager or shell
+// (this will happen in the child process)
+execvp(args[0], args);
