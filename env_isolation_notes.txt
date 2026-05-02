@@ -63,10 +63,23 @@ mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
 mount("overlay", "env/merged", "overlay", 0,
 "lowerdir=base,upperdir=env/diff,workdir=env/work");
 
-// 4. PIVOT: Change the world view
+
+// 4. PIVOT: Change the root filesystem to the new environment
 // (this will happen in the child process)
-chroot("env/merged");
+// 4.1. Make the directory a mount point (required for pivot_root)
+mount(rootfs, rootfs, NULL, MS_BIND | MS_REC, NULL);
+
+// 4.2. Create a place to put the "old" host root
+chdir(rootfs);
+mkdir("old_root", 0777);
+
+// 4.3. The Pivot
+syscall(SYS_pivot_root, ".", "old_root");
+
+// 4.4. Move to the new "/" and unmount the old host root to hide it
 chdir("/");
+umount2("/old_root", MNT_DETACH);
+rmdir("/old_root");
 
 // 5. EXEC: Run the package manager or shell
 // (this will happen in the child process)
