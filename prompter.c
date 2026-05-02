@@ -4,7 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
-
+#include "proc_manager.h"
 #include "pkg_adapter.h"
 
 #define BASE_DIR ".shocker"
@@ -133,6 +133,36 @@ static int cmd_destroy(int argc, char *argv[]) {
     return 0;
 }
 
+static int run_shell_passthrough(int argc, char *argv[]) {
+    char command[1024];
+    size_t used = 0;
+
+    if (argc <= 0 || argv == NULL || argv[0] == NULL) {
+        return 0;
+    }
+
+    command[0] = '\0';
+
+    for (int i = 0; i < argc; i++) {
+        int written = snprintf(
+            command + used,
+            sizeof(command) - used,
+            "%s%s",
+            i == 0 ? "" : " ",
+            argv[i]
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(command) - used) {
+            fprintf(stderr, "shell passthrough: command too long\n");
+            return 2;
+        }
+
+        used += (size_t)written;
+    }
+
+    return proc_run_shell(command, NULL);
+}
+
 static int dispatch_command(const char *cmd, int argc, char *argv[]) {
     size_t command_count = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
 
@@ -142,9 +172,7 @@ static int dispatch_command(const char *cmd, int argc, char *argv[]) {
         }
     }
 
-    fprintf(stderr, "unknown command: %s\n", cmd);
-    fprintf(stderr, "try 'help'\n");
-    return 2;
+    return run_shell_passthrough(argc, argv);
 }
 
 int main(int argc, char *argv[]) {
