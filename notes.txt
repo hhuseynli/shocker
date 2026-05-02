@@ -1,0 +1,6 @@
+How to give the program the permissions for isolating each environment from each-other and the host;
+as well as how to actually implement that isolation:
+
+(The full C boilerplate is at the end of the file)
+
+
