@@ -1,0 +1,6 @@
+#ifndef SHOCKER_GLOBAL_DEFS_H
+#define SHOCKER_GLOBAL_DEFS_H
+
+#define BASE_DIR ".shocker"
+
+#endif //SHOCKER_GLOBAL_DEFS_H

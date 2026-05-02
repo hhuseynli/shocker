@@ -1,7 +1,5 @@
 #ifndef SHOCKER_ENV_MANAGER_H
 #define SHOCKER_ENV_MANAGER_H
-#include <time.h>
-
 
 typedef enum {
     APT,
@@ -35,5 +33,17 @@ typedef struct {
     EnvStatus status;
 
 } EnvRecord;
+
+/// path includes the environment directory name.
+/// So, it is in the format ".shocker/[ENV_NAME]
+/// Returns -1 on fail, 0 on success.
+int delete_env(const char* path);
+
+/// path includes the environment directory name.
+/// So, it is in the format ".shocker/[ENV_NAME]
+/// Returns -1 on fail, 0 on success.
+int create_env(const char* path, const char* env_name);
+
+void cleanup_env_manager_on_exit();
 
 #endif //SHOCKER_ENV_MANAGER_H

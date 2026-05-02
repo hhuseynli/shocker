@@ -236,6 +236,10 @@ void test() {
     printf("END TESTING\n");
 }
 
+void cleanup_on_exit() {
+    cleanup_env_manager_on_exit();
+}
+
 int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
@@ -259,8 +263,11 @@ int main() {
         }
         args[i] = NULL;
 
-        if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit"))
+        if (!strcmp(args[0], "exit") || !strcmp(args[0], "quit")) {
+            cleanup_on_exit();
             break;
+        }
+
 
         //TODO: FOR TESTING ONLY--WILL BE REMOVED BEFORE FINAL BUILD
         if (strcmp(args[0], "test") == 0) {

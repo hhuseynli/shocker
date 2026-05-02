@@ -5,9 +5,11 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "global_defs.h"
 #include "pkg_adapter.h"
+#include "env_manager.h"
 
-#define BASE_DIR ".shocker"
+
 
 static int cmd_help(int argc, char *argv[]);
 static int cmd_install(int argc, char *argv[]);
@@ -32,6 +34,7 @@ static void ensure_base_dir(void) {
     struct stat st;
 
     if (stat(BASE_DIR, &st) == -1) {
+        // 0700 -- owner can read, write, execute
         if (mkdir(BASE_DIR, 0700) == -1) {
             perror("mkdir .shocker");
         }

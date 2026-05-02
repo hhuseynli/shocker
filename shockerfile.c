@@ -3,11 +3,11 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
+#include <sys/stat.h>
 
+#include "global_defs.h"
 #include "env_manager.h"
 #include "shockerfile.h"
-
-#define SHOCKERFILE_EXTENSION ".shockerfile"
 
 /*
  * Example Shockerfile:
@@ -124,7 +124,7 @@ int serialize_env(const EnvRecord *env_record) {
         default: strcpy(pkg_mgr_name, "unknown");
     }
     fprintf(fp, "pkg_manager = %s\n", pkg_mgr_name);
-    fprintf(fp, "created_at = %ld\n", (long) time(NULL));
+    fprintf(fp, "created_at = %ld\n", env_record->created_at); // (long) time(NULL)
     fprintf(fp, "packages = ");
     for (int i = 0; i < env_record->pkg_count; i++) {
         if (i == env_record->pkg_count - 1) {
@@ -228,4 +228,18 @@ int deserialize_env(const char *file_path, EnvRecord *env_record) {
 
     fclose(fp);
     return 0;
+}
+
+int does_shockerfile_exist(const char *file_path) {
+    struct stat st;
+
+    if (file_path == NULL || *file_path == '\0') {
+        return 0;
+    }
+
+    if (stat(file_path, &st) == -1) {
+        return 0;
+    }
+
+    return S_ISREG(st.st_mode) ? 1 : 0;
 }

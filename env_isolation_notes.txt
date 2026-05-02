@@ -17,7 +17,7 @@ CLONE_NEW will create a new and separate mount namespace for the child process.
 CLONE_NEWPID will create a new PID namespace for the child process, so that it will have its own process tree.
 The child process will see itself as PID 0.
 
-Crucially, the network namespace will not be unshared, so that the child process can access the network
+Crucially, the network namespace will NOT be unshared, so that the child process can access the network
 for downloading packages and updates. This also means that the child process can potentially access the network
 interfaces of the host, which is a security risk. To mitigate this,
 we can consider using network namespaces in the future, but for now,
@@ -50,6 +50,9 @@ Here's a code snippet of the most important system calls that will be used for t
 // 1. UNHARE: Cut the child process off from the parent namespace.
 // (this will happen in the parent process)
 unshare(CLONE_NEWUSER | CLONE_NEWNS | CLONE_NEWPID);
+
+// 1.5. DISABLE MOUNT PROPAGATION: Prevent the child process from seeing the host's mounts and vice versa.
+mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
 
 // 2. SYNC: Parent maps UID/GID via pipe here (omitted for brevity)
 // (this will happen in the parent process)
