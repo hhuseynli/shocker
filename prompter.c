@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "pkg_adapter.h"
+
 #define BASE_DIR ".shocker"
 
 static int cmd_help(int argc, char *argv[]);
@@ -42,8 +44,8 @@ static int cmd_help(int argc, char *argv[]) {
 
     printf("Shocker commands:\n");
     printf("  help                Show this help\n");
-    printf("  install <pkg...>    Install dependency packages (simulation)\n");
-    printf("  remove <pkg...>     Remove dependency packages (simulation)\n");
+    printf("  install <pkg...>    Prepare dependency package installation\n");
+    printf("  remove <pkg...>     Prepare dependency package removal\n");
     printf("  create <name>       Create a temporary dev environment\n");
     printf("  destroy <name>      Destroy a temporary dev environment\n");
     return 0;
@@ -60,8 +62,12 @@ static int cmd_install(int argc, char *argv[]) {
         printf(" %s", argv[i]);
     }
     printf("\n");
-    printf("[install] simulation only - no real package installation performed\n");
-    return 0;
+
+    /*
+     * dry_run = 1 means we only show the package-manager command.
+     * this keeps testing safe and avoids changing the user's system.
+     */
+    return pkg_install_packages(argc, argv, 1);
 }
 
 static int cmd_remove(int argc, char *argv[]) {
@@ -75,8 +81,12 @@ static int cmd_remove(int argc, char *argv[]) {
         printf(" %s", argv[i]);
     }
     printf("\n");
-    printf("[remove] simulation only - no real package removal performed\n");
-    return 0;
+
+    /*
+     * dry_run = 1 means we only show the package-manager command.
+     * this keeps testing safe and avoids removing real packages.
+     */
+    return pkg_remove_packages(argc, argv, 1);
 }
 
 static int cmd_create(int argc, char *argv[]) {
