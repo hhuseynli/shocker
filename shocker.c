@@ -313,7 +313,7 @@ int main() {
         }
 
         if (!strcmp(args[0], "help")) {
-            printf("Commands: "
+            printf("Commands:\n"
                    "1) help\n"
                    "2) exit\n"
                    "3) run [environment_name]\n"
