@@ -9,6 +9,10 @@
 #include "env_manager.h"
 #include "shockerfile.h"
 #include <signal.h>
+#include <sys/stat.h>
+
+#include "global_defs.h"
+#include "pkg_adapter.h"
 
 #define PROMPTER_PATH "./prompter"
 #define MAX_PROMPT_LEN 1024
@@ -269,12 +273,40 @@ void cleanup_on_exit() {
     cleanup_env_manager_on_exit();
 }
 
+int ensure_env_base_dir() {
+    struct stat st;
+
+    if (stat(ENV_BASE_DIR, &st) == -1) {
+        printf("Base directory for environments doesn't exist! Creating base directory...\n");
+    }
+
+    if (S_ISREG(st.st_mode) == 0) {
+        printf("base is dir\n");
+        const PkgMgr manager = pkg_detect_manager();
+        int result = init_env_base_dir(manager);
+        if (result == 10 || result == 11) {
+            return 0;
+        }
+    }
+
+    printf("Error: %s exists but is not a directory."
+           " Please remove or rename this file and try again.\n", ENV_BASE_DIR);
+
+    return 1;
+}
+
 int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
     signals_init();
 
     printf("Shocker activated!\n");
+
+    if (ensure_env_base_dir() != 0) {
+        //printf("oopsie\n");
+        printf("Something went wrong when creating .shocker/base. Quitting program...\n");
+        return 1;
+    }
 
     while (1) {
         if (signals_exit_requested()) {

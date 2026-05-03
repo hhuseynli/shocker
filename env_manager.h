@@ -1,11 +1,13 @@
 #ifndef SHOCKER_ENV_MANAGER_H
 #define SHOCKER_ENV_MANAGER_H
+#include <fcntl.h>
 
 typedef enum {
     APT,
     DNF,
     PACMAN,
-    APK
+    APK,
+    NONE
 } PkgMgr ;
 
 typedef enum {
@@ -33,6 +35,11 @@ typedef struct {
     EnvStatus status;
 
 } EnvRecord;
+
+/// Initializes the .shocker/base/ directory which will be shared by all
+/// environments for use when utilizing OverlayFS
+/// Returns -1 on fail, 0 on success.
+int init_env_base_dir(PkgMgr manager);
 
 /// path includes the environment directory name.
 /// So, it is in the format ".shocker/[ENV_NAME]

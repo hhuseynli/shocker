@@ -17,6 +17,7 @@ static int cmd_install(int argc, char *argv[]);
 static int cmd_remove(int argc, char *argv[]);
 static int cmd_create(int argc, char *argv[]);
 static int cmd_destroy(int argc, char *argv[]);
+static int cmd_run(int argc, char *argv[]);
 
 struct command {
     const char *name;
@@ -28,7 +29,8 @@ static const struct command COMMANDS[] = {
     {"install", cmd_install},
     {"remove", cmd_remove},
     {"create", cmd_create},
-    {"destroy", cmd_destroy}
+    {"destroy", cmd_destroy},
+    {"run", cmd_run}
 };
 
 static void ensure_base_dir(void) {
@@ -52,6 +54,7 @@ static int cmd_help(int argc, char *argv[]) {
     printf("  remove <pkg...>     Prepare dependency package removal\n");
     printf("  create <name>       Create a temporary dev environment\n");
     printf("  destroy <name>      Destroy a temporary dev environment\n");
+    printf("  run <env>           Run interactive bash in an environment\n");
     return 0;
 }
 
@@ -104,18 +107,7 @@ static int cmd_create(int argc, char *argv[]) {
     ensure_base_dir();
     snprintf(path, sizeof(path), "%s/%s", BASE_DIR, argv[1]);
 
-    if (mkdir(path, 0700) == -1) {
-        if (errno == EEXIST) {
-            fprintf(stderr, "create: environment '%s' already exists\n", argv[1]);
-        } else {
-            perror("create");
-        }
-        return 1;
-    }
-
-    printf("[create] environment created: %s\n", argv[1]);
-    printf("[create] path: %s\n", path);
-    return 0;
+    return create_env(path, argv[1]);
 }
 
 static int cmd_destroy(int argc, char *argv[]) {
@@ -128,43 +120,16 @@ static int cmd_destroy(int argc, char *argv[]) {
 
     snprintf(path, sizeof(path), "%s/%s", BASE_DIR, argv[1]);
 
-    if (rmdir(path) == -1) {
-        perror("destroy");
-        return 1;
-    }
-
-    printf("[destroy] environment removed: %s\n", argv[1]);
-    return 0;
+    return delete_env(path);
 }
 
-static int run_shell_passthrough(int argc, char *argv[]) {
-    char command[1024];
-    size_t used = 0;
-
-    if (argc <= 0 || argv == NULL || argv[0] == NULL) {
-        return 0;
+static int cmd_run(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "run: expected exactly one environment name\n");
+        return 2;
     }
 
-    command[0] = '\0';
-
-    for (int i = 0; i < argc; i++) {
-        int written = snprintf(
-            command + used,
-            sizeof(command) - used,
-            "%s%s",
-            i == 0 ? "" : " ",
-            argv[i]
-        );
-
-        if (written < 0 || (size_t)written >= sizeof(command) - used) {
-            fprintf(stderr, "shell passthrough: command too long\n");
-            return 2;
-        }
-
-        used += (size_t)written;
-    }
-
-    return proc_run_shell(command, NULL);
+    return proc_run_shell(argv[1], "bash");
 }
 
 static int dispatch_command(const char *cmd, int argc, char *argv[]) {
@@ -176,7 +141,8 @@ static int dispatch_command(const char *cmd, int argc, char *argv[]) {
         }
     }
 
-    return run_shell_passthrough(argc, argv);
+    fprintf(stderr, "Unknown command: %s\n", cmd);
+    return 2;
 }
 
 int main(int argc, char *argv[]) {

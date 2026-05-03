@@ -1,4 +1,5 @@
 #include "pkg_adapter.h"
+#include "env_manager.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,53 +37,53 @@ static int command_exists(const char *cmd) {
     return 0;
 }
 
-PackageManager pkg_detect_manager(void) {
+PkgMgr pkg_detect_manager(void) {
     if (command_exists("apt-get")) {
-        return PKG_MGR_APT;
+        return APT;
     }
 
     if (command_exists("dnf")) {
-        return PKG_MGR_DNF;
+        return DNF;
     }
 
     if (command_exists("pacman")) {
-        return PKG_MGR_PACMAN;
+        return PACMAN;
     }
 
     if (command_exists("apk")) {
-        return PKG_MGR_APK;
+        return APK;
     }
 
-    return PKG_MGR_NONE;
+    return NONE;
 }
 
-const char *pkg_manager_name(PackageManager manager) {
+const char *pkg_manager_name(PkgMgr manager) {
     switch (manager) {
-        case PKG_MGR_APT:
+        case APT:
             return "apt";
-        case PKG_MGR_DNF:
+        case DNF:
             return "dnf";
-        case PKG_MGR_PACMAN:
+        case PACMAN:
             return "pacman";
-        case PKG_MGR_APK:
+        case APK:
             return "apk";
         default:
             return "none";
     }
 }
 
-static void print_install_command(PackageManager manager, const char *pkg) {
+static void print_install_command(PkgMgr manager, const char *pkg) {
     switch (manager) {
-        case PKG_MGR_APT:
+        case APT:
             printf("sudo apt-get install -y %s\n", pkg);
             break;
-        case PKG_MGR_DNF:
+        case DNF:
             printf("sudo dnf install -y %s\n", pkg);
             break;
-        case PKG_MGR_PACMAN:
+        case PACMAN:
             printf("sudo pacman -S --noconfirm %s\n", pkg);
             break;
-        case PKG_MGR_APK:
+        case APK:
             printf("sudo apk add %s\n", pkg);
             break;
         default:
@@ -91,18 +92,18 @@ static void print_install_command(PackageManager manager, const char *pkg) {
     }
 }
 
-static void print_remove_command(PackageManager manager, const char *pkg) {
+static void print_remove_command(PkgMgr manager, const char *pkg) {
     switch (manager) {
-        case PKG_MGR_APT:
+        case APT:
             printf("sudo apt-get remove -y %s\n", pkg);
             break;
-        case PKG_MGR_DNF:
+        case DNF:
             printf("sudo dnf remove -y %s\n", pkg);
             break;
-        case PKG_MGR_PACMAN:
+        case PACMAN:
             printf("sudo pacman -R --noconfirm %s\n", pkg);
             break;
-        case PKG_MGR_APK:
+        case APK:
             printf("sudo apk del %s\n", pkg);
             break;
         default:
@@ -112,14 +113,14 @@ static void print_remove_command(PackageManager manager, const char *pkg) {
 }
 
 int pkg_install_packages(int argc, char *argv[], int dry_run) {
-    PackageManager manager = pkg_detect_manager();
+    PkgMgr manager = pkg_detect_manager();
 
     if (argc < 2) {
         fprintf(stderr, "install: expected at least one package\n");
         return 2;
     }
 
-    if (manager == PKG_MGR_NONE) {
+    if (manager == NONE) {
         fprintf(stderr, "[install] no supported package manager found\n");
         return 1;
     }
@@ -144,14 +145,14 @@ int pkg_install_packages(int argc, char *argv[], int dry_run) {
 }
 
 int pkg_remove_packages(int argc, char *argv[], int dry_run) {
-    PackageManager manager = pkg_detect_manager();
+    PkgMgr manager = pkg_detect_manager();
 
     if (argc < 2) {
         fprintf(stderr, "remove: expected at least one package\n");
         return 2;
     }
 
-    if (manager == PKG_MGR_NONE) {
+    if (manager == NONE) {
         fprintf(stderr, "[remove] no supported package manager found\n");
         return 1;
     }
@@ -169,6 +170,44 @@ int pkg_remove_packages(int argc, char *argv[], int dry_run) {
              */
             printf("[remove] real execution not enabled yet for: %s\n", argv[i]);
         }
+    }
+
+    return 0;
+}
+
+int get_minimal_install_command(PkgMgr manager, char* command) {
+    if (command == NULL) return -1;
+
+    switch (manager) {
+        case DNF:
+            // dnf --dump-variables for debugging
+
+            // --installroot specifies the target
+            // --releasever is often required when the host version differs
+            // @minimal-environment is a standard Fedora/RHEL group
+            strcpy(command, "dnf --dump-variables && dnf install -y --installroot=");
+            break;
+
+        case APT:
+            // debootstrap is the standard tool for creating Debian/Ubuntu bases
+            // Format: debootstrap [suite] [target]
+            strcpy(command, "debootstrap stable ");
+            break;
+
+        case PACMAN:
+            // pacstrap is the Arch utility for this; -K copies host keys
+            // base is the minimal package set
+            strcpy(command, "pacstrap -K -c ");
+            break;
+
+        case APK:
+            // Alpine's tool; --initdb creates the package database
+            strcpy(command, "apk add --initdb --root ");
+            break;
+
+        case NONE:
+        default:
+            return -1;
     }
 
     return 0;

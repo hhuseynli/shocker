@@ -40,6 +40,10 @@ other environments.
 (If we were to copy the base image for each environment, it would take up a lot of disk space and time.
 With OverlayFS, we can save both.)
 
+NOTE: The program will have to be run at first with sudo, so that .shocker/base can be bootstrapped.
+Afterward, the program will work regardless of whether it is run with sudo or not.
+
+
 Here's a code snippet of the most important system calls that will be used for the isolation:
 (All of this must happen after fork()).
 

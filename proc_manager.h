@@ -3,8 +3,8 @@
 
 #include <sys/types.h>
 
-int proc_run_foreground(char *const argv[], const char *workdir);
-int proc_run_shell(const char *command, const char *workdir);
+int proc_run_foreground(const char* env_name, char *const argv[]);
+int proc_run_shell(const char* env_name, const char *command);
 
 pid_t proc_spawn_background(char *const argv[], const char *workdir);
 int proc_reap_children(void);
