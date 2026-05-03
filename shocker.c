@@ -238,20 +238,9 @@ void test() {
     printf("TESTING... \n");
     EnvRecord e = {.name = "test-env",
         .root_path = "/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/",
-        .pkg_mgr = APT, .pkg_count = 3};
-
-    e.packages = malloc(3 * sizeof(char*));
-
-    e.packages[0] = strdup("git");
-    e.packages[1] = strdup("curl");
-    e.packages[2] = strdup("vim");
+        .pkg_mgr = APT, .pkg_count = 0};
 
     serialize_env(&e);
-
-    for (int i = 0; i < 3; i++) {
-        free(e.packages[i]);
-    }
-    free(e.packages);
 
     EnvRecord loaded;
     deserialize_env("/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/test-env.shockerfile", &loaded);
@@ -261,10 +250,6 @@ void test() {
     printf("Root Path : %s\n", loaded.root_path);
     printf("Package Manager : %d\n", loaded.pkg_mgr);
     printf("Packages count : %d\n", loaded.pkg_count);
-    printf("Packages:\n");
-    for (int i = 0; i < loaded.pkg_count; i++) {
-        printf("  - %s\n", loaded.packages[i]);
-    }
 
     printf("END TESTING\n");
 }
@@ -347,13 +332,19 @@ int main() {
         }
 
 
-        //TODO: FOR TESTING ONLY--WILL BE REMOVED BEFORE FINAL BUILD
+        /*//TODO: FOR TESTING ONLY--WILL BE REMOVED BEFORE FINAL BUILD
         if (strcmp(args[0], "test") == 0) {
             test();
-        }
+        }*/
 
         if (!strcmp(args[0], "help")) {
-            printf("Commands: help, exit, install, remove, create, destroy\n");
+            printf("Commands: "
+                   "1) help\n"
+                   "2) exit\n"
+                   "3) run [environment_name]\n"
+                   "4) create [environment_name]\n"
+                   "5) destroy [environment_name]\n"
+                   "6) list\n");
             continue;
         }
 

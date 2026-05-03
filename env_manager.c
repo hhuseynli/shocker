@@ -22,6 +22,7 @@ static int is_safe_env_delete_path(const char *path);
 
 EnvRecord* env_records[MAX_ENV_RECORD_COUNT];
 int env_records_count = 0;
+static PkgMgr active_pkg_manager = NONE;
 
 void cleanup_env_manager_on_exit() {
     for (int i = 0; i < env_records_count; i++) {
@@ -200,6 +201,8 @@ int init_env_base_dir(PkgMgr manager) {
         return -1;
     }
 
+    active_pkg_manager = manager;
+
     // Note: Some managers need specific package lists appended
 
     char curr_os_version[10];
@@ -309,10 +312,15 @@ int create_env(const char* path, const char* env_name) {
         return handle_mkdir_error();
     }
 
-    EnvRecord* env_record = malloc(sizeof(EnvRecord));
+    EnvRecord* env_record = calloc(1, sizeof(EnvRecord));
+    if (env_record == NULL) {
+        perror("calloc env_record failed");
+        return -1;
+    }
 
     snprintf(env_record->name, sizeof(env_record->name), "%s", env_name);
     snprintf(env_record->root_path, sizeof(env_record->root_path), "%s", path);
+    env_record->pkg_mgr = active_pkg_manager != NONE ? active_pkg_manager : pkg_detect_manager();
     env_record->created_at = time(NULL);
     env_record->status = ENV_STOPPED;
 
