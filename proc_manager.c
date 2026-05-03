@@ -68,47 +68,62 @@ static int setup_id_map(pid_t pid) {
     return 0;
 }
 
-/// Creates and mounts the essential files needed for the containerized environment to function properly,
-/// especially for package managers like dnf which rely on /proc and /sys.
-static int mount_pseudo_fs() {
-    // 1. Mount /proc (Essential for process management and dnf)
-    if (mount("proc", "/proc", "proc", 0, NULL) == -1) {
+/// Mounts essential pseudo-filesystems and host files into the overlay rootfs.
+/// Must be called after the overlay is mounted but before bind + pivot_root.
+static int mount_pseudo_fs_pre(const char *rootfs) {
+    char path[PATH_MAX];
+
+    // /proc
+    snprintf(path, sizeof(path), "%s/proc", rootfs);
+    mkdir(path, 0755);
+    if (mount("proc", path, "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) == -1)
         perror("mount proc");
-    }
 
-    // 2. Mount /sys (Essential for kernel info)
-    if (mount("sysfs", "/sys", "sysfs", 0, NULL) == -1) {
-        perror("mount sysfs");
-    }
+    // /sys — bind from host, read-only
+    snprintf(path, sizeof(path), "%s/sys", rootfs);
+    mkdir(path, 0755);
+    if (mount("/sys", path, NULL, MS_BIND | MS_REC, NULL) == -1)
+        perror("mount sys");
+    mount(NULL, path, NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_REC, NULL);
 
-    // 3. Mount /dev as tmpfs (A clean slate for devices)
-    if (mount("tmpfs", "/dev", "tmpfs", MS_NOSUID | MS_STRICTATIME, "mode=755") == -1) {
-        perror("mount /dev tmpfs");
-    }
+    // /dev — MS_REC is required because /dev has submounts on the host
+    snprintf(path, sizeof(path), "%s/dev", rootfs);
+    mkdir(path, 0755);
+    if (mount("/dev", path, NULL, MS_BIND | MS_REC, NULL) == -1)
+        perror("mount dev");
 
-    // 4. Create essential device nodes (or bind mount from host)
-    // dnf/gcc often need /dev/null, /dev/random, etc.
-    mkdir("/dev/pts", 0755);
-    mount("devpts", "/dev/pts", "devpts", 0, NULL);
+    // /dev/pts — comes after /dev is mounted
+    snprintf(path, sizeof(path), "%s/dev/pts", rootfs);
+    mkdir(path, 0755);
+    if (mount("devpts", path, "devpts", MS_NOSUID | MS_NOEXEC, NULL) == -1)
+        perror("mount devpts");
 
-    // 5. DNS - Bind mount host's resolv.conf to the container's /etc/
-    // Ensure /etc exists first
-    mkdir("/etc", 0755);
-    if (mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL) == -1) {
-        // If file doesn't exist to bind over, we touch it first
-        FILE* f = fopen("/etc/resolv.conf", "w");
-        if (f) { fclose(f); mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL); }
-    }
+    // /tmp
+    snprintf(path, sizeof(path), "%s/tmp", rootfs);
+    mkdir(path, 01777);
+    if (mount("tmpfs", path, "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777") == -1)
+        perror("mount tmp");
 
-    // Ensure /tmp is available (Many managers use it for lock files)
-    mount("tmpfs", "/tmp", "tmpfs", 0, "mode=1777");
+    // /etc/resolv.conf
+    snprintf(path, sizeof(path), "%s/etc", rootfs);
+    mkdir(path, 0755);
 
-    // Machine ID (prevents various systemd-related errors)
-    if (access("/etc/machine-id", F_OK) == 0) {
-        int fd = open("/etc/machine-id", O_CREAT | O_WRONLY, 0444);
-        if (fd != -1) close(fd);
-        mount("/etc/machine-id", "/etc/machine-id", NULL, MS_BIND | MS_RDONLY, NULL);
-    }
+    /*snprintf(path, sizeof(path), "%s/etc/resolv.conf", rootfs);*/
+
+    int fd = open(path, O_CREAT | O_WRONLY, 0644);
+    if (fd != -1) close(fd);
+
+    /*// Bind mount the HOST'S resolv.conf to the CONTAINER'S resolv.conf
+    if (mount("/etc/resolv.conf", path, NULL, MS_BIND | MS_RDONLY, NULL) == -1) {
+        perror("mount resolv.conf");
+    }*/
+
+    // /etc/machine-id
+    snprintf(path, sizeof(path), "%s/etc/machine-id", rootfs);
+    fd = open(path, O_CREAT | O_WRONLY, 0444);
+    if (fd != -1) close(fd);
+    if (mount("/etc/machine-id", path, NULL, MS_BIND | MS_RDONLY, NULL) == -1)
+        perror("mount machine-id");
 
     return 0;
 }
@@ -165,7 +180,7 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         // Child
         // this process will create a new user namespace, notify parent so it can write
         // uid/gid maps, then create new mount and pid namespaces and fork the final worker.
-        close(map_ready_pipe[0]);
+        /*close(map_ready_pipe[0]);
         close(cont_pipe[1]);
 
         // 1) Create new user namespace
@@ -187,6 +202,7 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
 
         close(map_ready_pipe[1]);
         close(cont_pipe[0]);
+        */
 
         // Create new mount and PID namespaces for the worker
         if (unshare(CLONE_NEWNS | CLONE_NEWPID) == -1) {
@@ -218,6 +234,8 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
                 _exit(127);
             }
 
+            mount_pseudo_fs_pre(rootfs);
+
             // 4. PIVOT
             if (mount(rootfs, rootfs, NULL, MS_BIND | MS_REC, NULL) == -1) {
                 perror("mount bind");
@@ -229,11 +247,11 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
                 _exit(127);
             }
 
-            char old_root_path[PATH_MAX];
-            snprintf(old_root_path, sizeof(old_root_path), "%s/old_root", rootfs);
-            mkdir(old_root_path, 0777);
+            /*char old_root_path[PATH_MAX];
+            snprintf(old_root_path, sizeof(old_root_path), "%s/old_root", rootfs);*/
+            mkdir("old_root", 0777);
 
-            if (syscall(SYS_pivot_root, ".", old_root_path) == -1) {
+            if (syscall(SYS_pivot_root, ".", "old_root") == -1) {
                 perror("pivot_root");
                 _exit(127);
             }
@@ -243,16 +261,79 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
                 _exit(127);
             }
 
+            // automatically configure DNS for dnf install to work
+            // 1. Ensure /etc exists
+            if (mkdir("/etc", 0755) == -1 && errno != EEXIST) {
+                perror("mkdir /etc failed");
+            }
+
+            // 2. CRITICAL: Delete existing symlink if it exists
+            // This prevents fopen from following the link to a non-existent /run path
+            unlink("/etc/resolv.conf");
+
+            // 3. Now write the actual file
+            FILE *f = fopen("/etc/resolv.conf", "w");
+            if (f) {
+                fprintf(f, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
+                fclose(f);
+            } else {
+                perror("Failed to write resolv.conf");
+            }
+
+            // user namespaces can't have their own sysfs, however some programs/commands may still need it.
+            // so we mount our own sys directory and
+            // point it to the host's sys
+            // we also make our sys directory read-only for safety.
+            mkdir("sys", 0755);
+            if (mount("/sys", "sys", NULL, MS_BIND | MS_REC, NULL) == -1) {
+                perror("bind mount sys");
+            }
+            mount(NULL, "sys", NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_REC, NULL);
+
+
             // Unmount and clean up the old host root
-            if (umount2(old_root_path, MNT_DETACH) == -1) {
+            if (umount2("/old_root", MNT_DETACH) == -1) {
                 perror("umount old_root");
                 _exit(127);
             }
-            rmdir(old_root_path);
+            rmdir("/old_root");
 
-            mount_pseudo_fs();
+            /*// Save rpm db and dnf state before covering /var
+            mkdir("/tmp/.var_lib", 0755);
+            if (mount("/var/lib", "/tmp/.var_lib", NULL, MS_BIND | MS_REC, NULL) == -1)
+                perror("save /var/lib");
+
+            mkdir("/tmp/.rpm", 0755);
+            if (mount("/usr/lib/sysimage/rpm", "/tmp/.rpm", NULL, MS_BIND | MS_REC, NULL) == -1)
+                perror("save rpm db");*/
+
+            /*// Cover /var with tmpfs for writable ephemeral directories
+            mkdir("/var", 0755);
+            if (mount("tmpfs", "/var", "tmpfs", MS_NOSUID | MS_NODEV, "mode=755") == -1)
+                perror("mount /var");*/
+            mkdir("/var/log", 0755);
+            mkdir("/var/cache", 0755);
+            mkdir("/var/cache/dnf", 0755);
+            mkdir("/var/tmp", 01777);
+            mkdir("/var/lib", 0755);
+
+            /*
+            // /etc/resolv.conf — done post-pivot so the path resolves to the
+            // container's own plain file from the base layer, not the host symlink
+            mkdir("/etc", 0755);
+            int fd = open("/etc/resolv.conf", O_CREAT | O_WRONLY, 0644);
+            if (fd != -1) close(fd);
+            if (mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL) == -1) {
+                FILE *f = fopen("/etc/resolv.conf", "w");
+                if (f) fclose(f);
+                mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL);
+            }
+            */
+
+            //mount_pseudo_fs();
 
             execvp(argv[0], argv);
+
             perror("execvp");
             _exit(127);
         } else {
@@ -269,7 +350,7 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
     } else {
         // Parent
         // wait for child to indicate it unshared user ns, then write uid/gid maps
-        close(map_ready_pipe[1]);
+        /*close(map_ready_pipe[1]);
         close(cont_pipe[0]);
 
         // Wait for child's ready signal
@@ -292,7 +373,7 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         }
 
         close(map_ready_pipe[0]);
-        close(cont_pipe[1]);
+        close(cont_pipe[1]);*/
 
         return wait_for_child(pid);
     }

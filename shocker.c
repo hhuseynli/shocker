@@ -281,7 +281,7 @@ int ensure_env_base_dir() {
     }
 
     if (S_ISREG(st.st_mode) == 0) {
-        printf("base is dir\n");
+        //printf("base is dir\n");
         const PkgMgr manager = pkg_detect_manager();
         int result = init_env_base_dir(manager);
         if (result == 10 || result == 11) {

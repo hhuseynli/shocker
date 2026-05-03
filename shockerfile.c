@@ -103,7 +103,7 @@ int serialize_env(const EnvRecord *env_record) {
     int file_path_size = 321 + strlen(SHOCKERFILE_EXTENSION); // 256 + 64 + 1 (for \0) + strlen(SHOCKERFILE_EXTENSION)
     char file_path[file_path_size];
 
-    snprintf(file_path, sizeof(file_path), "%s%s%s", env_record->root_path, env_record->name, SHOCKERFILE_EXTENSION);
+    snprintf(file_path, sizeof(file_path), "%s/%s%s", BASE_DIR, env_record->name, SHOCKERFILE_EXTENSION);
 
     FILE *fp = fopen(file_path, "w");
 

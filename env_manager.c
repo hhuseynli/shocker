@@ -255,6 +255,15 @@ int delete_env(const char* path) {
         return -1;
     }
 
+    char shockerfile_path[PATH_MAX];
+    snprintf(shockerfile_path, sizeof(shockerfile_path), "%s%s", path, SHOCKERFILE_EXTENSION);
+    if (does_shockerfile_exist(shockerfile_path)) {
+        if (unlink(shockerfile_path) == -1) {
+            perror("unlink shockerfile failed");
+            return -1;
+        }
+    }
+
     if (remove_path_recursive(path) == -1) {
         return -1;
     }
