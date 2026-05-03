@@ -15,8 +15,6 @@
 
 
 static int cmd_help(int argc, char *argv[]);
-static int cmd_install(int argc, char *argv[]);
-static int cmd_remove(int argc, char *argv[]);
 static int cmd_create(int argc, char *argv[]);
 static int cmd_list(int argc, char *argv[]);
 static int cmd_destroy(int argc, char *argv[]);
@@ -64,8 +62,6 @@ struct command {
 
 static const struct command COMMANDS[] = {
     {"help", cmd_help},
-    {"install", cmd_install},
-    {"remove", cmd_remove},
     {"create", cmd_create},
     {"list", cmd_list},
     {"destroy", cmd_destroy},
@@ -89,51 +85,11 @@ static int cmd_help(int argc, char *argv[]) {
 
     printf("Shocker commands:\n");
     printf("  help                Show this help\n");
-    printf("  install <pkg...>    Prepare dependency package installation\n");
-    printf("  remove <pkg...>     Prepare dependency package removal\n");
     printf("  create <name>       Create a temporary dev environment\n");
     printf("  list                List created environments\n");
     printf("  destroy <name>      Destroy a temporary dev environment\n");
     printf("  run <env>           Run interactive bash in an environment\n");
     return 0;
-}
-
-static int cmd_install(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "install: expected at least one package\n");
-        return 2;
-    }
-
-    printf("[install] preparing to install:");
-    for (int i = 1; i < argc; i++) {
-        printf(" %s", argv[i]);
-    }
-    printf("\n");
-
-    /*
-     * dry_run = 1 means we only show the package-manager command.
-     * this keeps testing safe and avoids changing the user's system.
-     */
-    return pkg_install_packages(argc, argv, 1);
-}
-
-static int cmd_remove(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "remove: expected at least one package\n");
-        return 2;
-    }
-
-    printf("[remove] preparing to remove:");
-    for (int i = 1; i < argc; i++) {
-        printf(" %s", argv[i]);
-    }
-    printf("\n");
-
-    /*
-     * dry_run = 1 means we only show the package-manager command.
-     * this keeps testing safe and avoids removing real packages.
-     */
-    return pkg_remove_packages(argc, argv, 1);
 }
 
 static int cmd_create(int argc, char *argv[]) {

@@ -5,9 +5,6 @@
 PkgMgr pkg_detect_manager(void);
 const char *pkg_manager_name(PkgMgr manager);
 
-int pkg_install_packages(int argc, char *argv[], int dry_run);
-int pkg_remove_packages(int argc, char *argv[], int dry_run);
-
 /**
  * Populates 'command' with the host-side string needed to bootstrap
  * a minimal OS into the base directory.
