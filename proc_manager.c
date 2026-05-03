@@ -20,6 +20,23 @@
 
 #include "shockerfile.h"
 
+static int set_env_status_for_name(const char *env_name, EnvStatus status) {
+    char shockerfile_path[512];
+    EnvRecord env;
+
+    if (env_name == NULL || *env_name == '\0') {
+        return -1;
+    }
+
+    snprintf(shockerfile_path, sizeof(shockerfile_path), "%s/%s%s", BASE_DIR, env_name, SHOCKERFILE_EXTENSION);
+    if (deserialize_env(shockerfile_path, &env) != 0) {
+        return -1;
+    }
+
+    env.status = status;
+    return serialize_env(&env);
+}
+
 static int setup_id_map(pid_t pid) {
     char path[128], map_data[128];
     int fd;
@@ -172,23 +189,31 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
 
     if (argv == NULL || argv[0] == NULL) return 2;
 
+    if (set_env_status_for_name(env_name, ENV_RUNNING) != 0) {
+        fprintf(stderr, "proc_manager: failed to mark environment '%s' as running\n", env_name);
+        return 1;
+    }
+
     int map_ready_pipe[2];
     int cont_pipe[2];
 
     if (pipe(map_ready_pipe) == -1) {
         perror("pipe");
+        set_env_status_for_name(env_name, ENV_ERROR);
         return 1;
     }
 
     if (pipe(cont_pipe) == -1) {
         perror("pipe");
         close(map_ready_pipe[0]); close(map_ready_pipe[1]);
+        set_env_status_for_name(env_name, ENV_ERROR);
         return 1;
     }
 
     pid = fork();
     if (pid < 0) {
         perror("fork");
+        set_env_status_for_name(env_name, ENV_ERROR);
         return 1;
     }
 
@@ -401,6 +426,8 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         close(cont_pipe[1]);*/
 
         int result = wait_for_child(pid);
+
+        set_env_status_for_name(env_name, ENV_STOPPED);
 
         // Restore the original signal mask
         sigprocmask(SIG_SETMASK, &orig_mask, NULL);
