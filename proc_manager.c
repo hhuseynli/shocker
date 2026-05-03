@@ -37,54 +37,6 @@ static int set_env_status_for_name(const char *env_name, EnvStatus status) {
     return serialize_env(&env);
 }
 
-static int setup_id_map(pid_t pid) {
-    char path[128], map_data[128];
-    int fd;
-    uid_t uid = getuid();
-    gid_t gid = getgid();
-
-    // Try to disable setgroups for the target pid (may not exist on older kernels)
-    snprintf(path, sizeof(path), "/proc/%d/setgroups", pid);
-    if ((fd = open(path, O_WRONLY)) != -1) {
-        if (write(fd, "deny\n", 5) != 5) {
-            perror("write setgroups");
-            close(fd);
-            return -1;
-        }
-        close(fd);
-    } else if (errno != ENOENT) {
-        perror("open setgroups");
-        return -1;
-    }
-
-    snprintf(path, sizeof(path), "/proc/%d/gid_map", pid);
-    snprintf(map_data, sizeof(map_data), "0 %d 1\n", gid);
-    if ((fd = open(path, O_WRONLY)) == -1) {
-        perror("open gid_map");
-        return -1;
-    }
-    if (write(fd, map_data, strlen(map_data)) != (ssize_t)strlen(map_data)) {
-        perror("write gid_map");
-        close(fd);
-        return -1;
-    }
-    close(fd);
-
-    snprintf(path, sizeof(path), "/proc/%d/uid_map", pid);
-    snprintf(map_data, sizeof(map_data), "0 %d 1\n", uid);
-    if ((fd = open(path, O_WRONLY)) == -1) {
-        perror("open uid_map");
-        return -1;
-    }
-    if (write(fd, map_data, strlen(map_data)) != (ssize_t)strlen(map_data)) {
-        perror("write uid_map");
-        close(fd);
-        return -1;
-    }
-    close(fd);
-
-    return 0;
-}
 
 /// Mounts essential pseudo-filesystems and host files into the overlay rootfs.
 /// Must be called after the overlay is mounted but before bind + pivot_root.
@@ -126,15 +78,8 @@ static int mount_pseudo_fs_pre(const char *rootfs) {
     snprintf(path, sizeof(path), "%s/etc", rootfs);
     mkdir(path, 0755);
 
-    /*snprintf(path, sizeof(path), "%s/etc/resolv.conf", rootfs);*/
-
     int fd = open(path, O_CREAT | O_WRONLY, 0644);
     if (fd != -1) close(fd);
-
-    /*// Bind mount the HOST'S resolv.conf to the CONTAINER'S resolv.conf
-    if (mount("/etc/resolv.conf", path, NULL, MS_BIND | MS_RDONLY, NULL) == -1) {
-        perror("mount resolv.conf");
-    }*/
 
     // /etc/machine-id
     snprintf(path, sizeof(path), "%s/etc/machine-id", rootfs);
@@ -219,32 +164,6 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
 
     if (pid == 0) {
         // Child
-        // this process will create a new user namespace, notify parent so it can write
-        // uid/gid maps, then create new mount and pid namespaces and fork the final worker.
-        /*close(map_ready_pipe[0]);
-        close(cont_pipe[1]);
-
-        // 1) Create new user namespace
-        if (unshare(CLONE_NEWUSER) == -1) {
-            perror("unshare(CLONE_NEWUSER)");
-            _exit(127);
-        }
-
-        // Notify parent we are ready for uid/gid mapping
-        if (write(map_ready_pipe[1], "r", 1) != 1) {
-            // best effort
-        }
-
-        // Wait for parent to finish mapping
-        char ok;
-        if (read(cont_pipe[0], &ok, 1) != 1) {
-            _exit(127);
-        }
-
-        close(map_ready_pipe[1]);
-        close(cont_pipe[0]);
-        */
-
         // Create new mount and PID namespaces for the worker
         if (unshare(CLONE_NEWNS | CLONE_NEWPID) == -1) {
             perror("unshare(CLONE_NEWNS|CLONE_NEWPID)");
@@ -288,8 +207,6 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
                 _exit(127);
             }
 
-            /*char old_root_path[PATH_MAX];
-            snprintf(old_root_path, sizeof(old_root_path), "%s/old_root", rootfs);*/
             mkdir("old_root", 0777);
 
             if (syscall(SYS_pivot_root, ".", "old_root") == -1) {
@@ -339,39 +256,11 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
             }
             rmdir("/old_root");
 
-            /*// Save rpm db and dnf state before covering /var
-            mkdir("/tmp/.var_lib", 0755);
-            if (mount("/var/lib", "/tmp/.var_lib", NULL, MS_BIND | MS_REC, NULL) == -1)
-                perror("save /var/lib");
-
-            mkdir("/tmp/.rpm", 0755);
-            if (mount("/usr/lib/sysimage/rpm", "/tmp/.rpm", NULL, MS_BIND | MS_REC, NULL) == -1)
-                perror("save rpm db");*/
-
-            /*// Cover /var with tmpfs for writable ephemeral directories
-            mkdir("/var", 0755);
-            if (mount("tmpfs", "/var", "tmpfs", MS_NOSUID | MS_NODEV, "mode=755") == -1)
-                perror("mount /var");*/
             mkdir("/var/log", 0755);
             mkdir("/var/cache", 0755);
             mkdir("/var/cache/dnf", 0755);
             mkdir("/var/tmp", 01777);
             mkdir("/var/lib", 0755);
-
-            /*
-            // /etc/resolv.conf — done post-pivot so the path resolves to the
-            // container's own plain file from the base layer, not the host symlink
-            mkdir("/etc", 0755);
-            int fd = open("/etc/resolv.conf", O_CREAT | O_WRONLY, 0644);
-            if (fd != -1) close(fd);
-            if (mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL) == -1) {
-                FILE *f = fopen("/etc/resolv.conf", "w");
-                if (f) fclose(f);
-                mount("/etc/resolv.conf", "/etc/resolv.conf", NULL, MS_BIND, NULL);
-            }
-            */
-
-            //mount_pseudo_fs();
 
             execvp(argv[0], argv);
 
@@ -396,34 +285,6 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         sigemptyset(&mask);
         sigaddset(&mask, SIGTTOU);
         sigprocmask(SIG_BLOCK, &mask, &orig_mask);
-
-        // wait for child to indicate it unshared user ns, then write uid/gid maps
-        /*close(map_ready_pipe[1]);
-        close(cont_pipe[0]);
-
-        // Wait for child's ready signal
-        char ready;
-        if (read(map_ready_pipe[0], &ready, 1) == 1) {
-            // Child has unshared user namespace; write uid/gid maps
-            if (setup_id_map(pid) != 0) {
-                close(map_ready_pipe[0]);
-                close(cont_pipe[1]);
-                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
-                return 1;
-            }
-        } else {
-            close(map_ready_pipe[0]);
-            close(cont_pipe[1]);
-            sigprocmask(SIG_SETMASK, &orig_mask, NULL);
-            return 1;
-        }
-
-        // Tell child it may continue
-        if (write(cont_pipe[1], "c", 1) != 1) {
-        }
-
-        close(map_ready_pipe[0]);
-        close(cont_pipe[1]);*/
 
         int result = wait_for_child(pid);
 
@@ -450,79 +311,4 @@ int proc_run_shell(const char* env_name, const char *command) {
     }
 
     return proc_run_foreground(env_name, argv);
-}
-
-pid_t proc_spawn_background(char *const argv[], const char *workdir) {
-    pid_t pid;
-
-    if (argv == NULL || argv[0] == NULL) {
-        fprintf(stderr, "proc_manager: empty background command\n");
-        return -1;
-    }
-
-    pid = fork();
-
-    if (pid < 0) {
-        perror("fork");
-        return -1;
-    }
-
-    if (pid == 0) {
-        if (setpgid(0, 0) == -1) {
-            perror("setpgid");
-            _exit(127);
-        }
-
-        if (workdir != NULL && chdir(workdir) == -1) {
-            perror("chdir");
-            _exit(127);
-        }
-
-        execvp(argv[0], argv);
-        perror("execvp");
-        _exit(127);
-    }
-
-    if (setpgid(pid, pid) == -1 && errno != EACCES) {
-        perror("setpgid");
-    }
-
-    return pid;
-}
-
-int proc_reap_children(void) {
-    int status = 0;
-    int reaped = 0;
-
-    while (waitpid(-1, &status, WNOHANG) > 0) {
-        reaped++;
-    }
-
-    return reaped;
-}
-
-int proc_kill_process(pid_t pid) {
-    if (pid <= 0) {
-        return 1;
-    }
-
-    if (kill(pid, SIGTERM) == -1) {
-        perror("kill");
-        return 1;
-    }
-
-    return 0;
-}
-
-int proc_kill_group(pid_t pgid) {
-    if (pgid <= 0) {
-        return 1;
-    }
-
-    if (killpg(pgid, SIGTERM) == -1) {
-        perror("killpg");
-        return 1;
-    }
-
-    return 0;
 }

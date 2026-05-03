@@ -290,12 +290,6 @@ int delete_env(const char* path) {
 }
 
 int create_env(const char* path, const char* env_name) {
-    /*
-    if (does_shockerfile_exist(path)) {
-        printf("Cannot create new environment: environment %s already exists!", path);
-        return -1;
-    }
-    */
     if (mkdir(path, 0700) == 0) {
         char upperdir[512];
         char workdir[512];

@@ -6,10 +6,4 @@
 int proc_run_foreground(const char* env_name, char *const argv[]);
 int proc_run_shell(const char* env_name, const char *command);
 
-pid_t proc_spawn_background(char *const argv[], const char *workdir);
-int proc_reap_children(void);
-
-int proc_kill_process(pid_t pid);
-int proc_kill_group(pid_t pgid);
-
 #endif
