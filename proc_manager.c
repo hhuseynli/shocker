@@ -1,3 +1,7 @@
+#include <stdio.h>
+
+#include "shockerfile.h"
+
 int run_new_env(const char* path);
 
 int run_existing_env(const char* path);
