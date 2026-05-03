@@ -234,25 +234,6 @@ int run_prompt(char *const argv[]) {
     return 1;
 }
 
-void test() {
-    printf("TESTING... \n");
-    EnvRecord e = {.name = "test-env",
-        .root_path = "/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/",
-        .pkg_mgr = APT, .pkg_count = 0};
-
-    serialize_env(&e);
-
-    EnvRecord loaded;
-    deserialize_env("/home/yusuf/Desktop/ADAUniversity/OperatingSystems/TeamProject/shocker/.shocker/test-env.shockerfile", &loaded);
-
-    printf("Loaded env:\n");
-    printf("Name : %s\n", loaded.name);
-    printf("Root Path : %s\n", loaded.root_path);
-    printf("Package Manager : %d\n", loaded.pkg_mgr);
-    printf("Packages count : %d\n", loaded.pkg_count);
-
-    printf("END TESTING\n");
-}
 
 void cleanup_on_exit() {
     cleanup_env_manager_on_exit();
@@ -330,12 +311,6 @@ int main() {
             cleanup_on_exit();
             break;
         }
-
-
-        /*//TODO: FOR TESTING ONLY--WILL BE REMOVED BEFORE FINAL BUILD
-        if (strcmp(args[0], "test") == 0) {
-            test();
-        }*/
 
         if (!strcmp(args[0], "help")) {
             printf("Commands: "
