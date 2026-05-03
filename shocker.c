@@ -4,10 +4,11 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <termios.h>
-
+#include "signals.h"
+#include <errno.h>
 #include "env_manager.h"
 #include "shockerfile.h"
-
+#include <signal.h>
 
 #define PROMPTER_PATH "./prompter"
 #define MAX_PROMPT_LEN 1024
@@ -187,18 +188,46 @@ static int read_input(char *buffer, size_t size) {
 }
 
 int run_prompt(char *const argv[]) {
-    int status;
+    int status = 0;
     pid_t pid = fork();
+
+    if (pid < 0) {
+        perror("fork");
+        return 1;
+    }
 
     if (pid == 0) {
         execve(PROMPTER_PATH, argv, environ);
         perror("execve");
         exit(1);
-    } else {
-        waitpid(pid, &status, 0);
     }
 
-    return WEXITSTATUS(status);
+    signals_set_active_child(pid);
+
+    while (waitpid(pid, &status, 0) == -1) {
+        if (errno == EINTR) {
+            if (signals_exit_requested()) {
+                kill(pid, SIGTERM);
+            }
+            continue;
+        }
+
+        perror("waitpid");
+        signals_clear_active_child();
+        return 1;
+    }
+
+    signals_clear_active_child();
+
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+
+    return 1;
 }
 
 void test() {
@@ -243,16 +272,25 @@ void cleanup_on_exit() {
 int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
+    signals_init();
 
     printf("Shocker activated!\n");
 
     while (1) {
-        printf("Shocker> ");
-        fflush(stdout);
+        if (signals_exit_requested()) {
+        break;
+    }
 
-        if (read_input(buffer, sizeof(buffer)) == -1) break;
-        if (!buffer[0]) continue; // skip empty buffer/input
+    printf("Shocker> ");
+    fflush(stdout);
 
+    if (read_input(buffer, sizeof(buffer)) == -1) break;
+
+    if (signals_exit_requested()) {
+        break;
+    }
+
+    if (!buffer[0]) continue;
         add_history(buffer);
 
         int i = 0;

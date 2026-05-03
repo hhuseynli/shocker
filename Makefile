@@ -5,14 +5,16 @@ CFLAGS = -Wall -Wextra -pedantic
 
 all: shocker prompter
 
-shocker: shocker.c shockerfile.c
+shocker: shocker.c shockerfile.c signals.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-prompter: prompter.c
-	$(CC) $(CFLAGS) -o $@ $<
+prompter: prompter.c pkg_adapter.c proc_manager.c
+	$(CC) $(CFLAGS) -o $@ $^
 
 run: all
 	./shocker
 
 clean:
 	rm -f shocker prompter
+
+
