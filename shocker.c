@@ -298,6 +298,9 @@ int ensure_env_base_dir() {
 int main() {
     char buffer[MAX_PROMPT_LEN];
     char *args[MAX_ARGS];
+    struct termios orig_termios;
+    int orig_termios_saved = 0;
+
     signals_init();
 
     printf("Shocker activated!\n");
@@ -306,6 +309,11 @@ int main() {
         //printf("oopsie\n");
         printf("Something went wrong when creating .shocker/base. Quitting program...\n");
         return 1;
+    }
+
+    // Save the original terminal state for restoration after running commands
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == 0) {
+        orig_termios_saved = 1;
     }
 
     while (1) {
@@ -350,5 +358,11 @@ int main() {
         }
 
         run_prompt(args);
+
+        // Restore terminal state after the child process exits
+        // This ensures the terminal is usable again after container commands complete
+        if (orig_termios_saved) {
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+        }
     }
 }

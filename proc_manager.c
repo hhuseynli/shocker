@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
 #include "global_defs.h"
@@ -130,10 +131,25 @@ static int mount_pseudo_fs_pre(const char *rootfs) {
 
 static int wait_for_child(pid_t pid) {
     int status = 0;
+
+    // Set the child process as the foreground process group so it can receive signals
+    if (tcsetpgrp(STDIN_FILENO, pid) == -1) {
+        // If tcsetpgrp fails, continue anyway - the child might not need it
+        // (e.g., if stdin is not a tty)
+    }
+
     while (waitpid(pid, &status, 0) == -1) {
         if (errno == EINTR) continue;
         return 1;
     }
+
+    // Restore the shocker process as the foreground process group
+    // This allows input to be received by shocker again after the container exits
+    pid_t shocker_pgid = getpgrp();
+    if (tcsetpgrp(STDIN_FILENO, shocker_pgid) == -1) {
+        // Silently ignore errors - tcsetpgrp may fail if stdin is not a tty
+    }
+
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
@@ -349,6 +365,13 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         }
     } else {
         // Parent
+        // Temporarily ignore SIGTTOU when modifying terminal process group
+        // This prevents the parent from being suspended during tcsetpgrp
+        sigset_t mask, orig_mask;
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGTTOU);
+        sigprocmask(SIG_BLOCK, &mask, &orig_mask);
+
         // wait for child to indicate it unshared user ns, then write uid/gid maps
         /*close(map_ready_pipe[1]);
         close(cont_pipe[0]);
@@ -360,11 +383,13 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
             if (setup_id_map(pid) != 0) {
                 close(map_ready_pipe[0]);
                 close(cont_pipe[1]);
+                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
                 return 1;
             }
         } else {
             close(map_ready_pipe[0]);
             close(cont_pipe[1]);
+            sigprocmask(SIG_SETMASK, &orig_mask, NULL);
             return 1;
         }
 
@@ -375,7 +400,12 @@ int proc_run_foreground(const char* env_name, char *const argv[]) {
         close(map_ready_pipe[0]);
         close(cont_pipe[1]);*/
 
-        return wait_for_child(pid);
+        int result = wait_for_child(pid);
+
+        // Restore the original signal mask
+        sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+
+        return result;
     }
 }
 
