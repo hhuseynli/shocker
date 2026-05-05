@@ -242,8 +242,12 @@ void cleanup_on_exit() {
 int ensure_env_base_dir() {
     struct stat st;
 
+    if (mkdir(".shocker", 0777) == -1) {
+        
+    }
+
     if (stat(ENV_BASE_DIR, &st) == -1) {
-        printf("Base directory for environments doesn't exist! Creating base directory...\n");
+         printf("Base directory for environments doesn't exist! Creating base directory...\n");
     }
 
     if (S_ISREG(st.st_mode) == 0) {
